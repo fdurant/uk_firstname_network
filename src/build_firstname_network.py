@@ -11,8 +11,12 @@ def init():
     parser = argparse.ArgumentParser()
     parser.add_argument('--inFileCSV', dest='inFileCSV', 
                         type=str,
-                        help='input file with UK first names in CSV',
+                        help='input file with UK first names in CSV format',
                         required=True)
+    parser.add_argument('--inFileMustHaveCSV', dest='inFileMustHaveCSV', 
+                        type=str,
+                        help='input file with mandatory UK first names in CSV format',
+                        required=False)
     parser.add_argument('--minFreq', dest='minFreq', 
                         type=int, default=10,
                         help='minimum frequency required for a name to be read')
@@ -35,6 +39,16 @@ def init():
     global args
     args = vars(parser.parse_args())
     print(args, file=sys.stderr)
+
+def read_must_haves(filename):
+    
+    global mustHave
+    mustHave = {}
+
+    with open(filename, 'r') as csvfile:
+        reader = csv.reader(csvfile, delimiter=',')
+        for row in reader:
+            mustHave[row[0]] = 1
 
 def read_file(filename):
     
@@ -91,13 +105,14 @@ def project_network():
         else:
             if a['weight'] < args['simThreshold']:
                 nameNetwork.remove_edge(u,v)
+
     print("done",file=sys.stderr)
 
     # Apply minimum degree
     print("Deleting nodes with too low degree in name network with %d nodes and %d edges... " % (nx.number_of_nodes(nameNetwork), nx.number_of_edges(nameNetwork)),file=sys.stderr)
     for node in list(nameNetwork):
         if nameNetwork.degree(node) < args['degreeThreshold']:
-            if int(G.node[node]['rank']) > args['rankThreshold']:
+            if int(G.node[node]['rank']) > args['rankThreshold'] and not node in mustHave:
                 nameNetwork.remove_node(node)
             else:
                 pass
@@ -130,6 +145,7 @@ def write_network():
 
 if __name__ == '__main__':
     init()
+    read_must_haves(args['inFileMustHaveCSV'])
     read_file(args['inFileCSV'])
     project_network()
     write_network()
