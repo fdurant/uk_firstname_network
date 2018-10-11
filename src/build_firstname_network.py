@@ -6,6 +6,7 @@ import networkx as nx
 from math import log
 from nltk.util import bigrams
 import community
+from colour import Color
 
 def init():
     parser = argparse.ArgumentParser()
@@ -133,6 +134,7 @@ def project_network():
     for name in partition.keys():
         nameNetwork.node[name]['community'] = partition[name]
         nameNetwork.node[name]['label'] = name
+        nameNetwork.node[name]['color'] = Color(pick_for=partition[name]).get_web()
         del nameNetwork.node[name]['kind']
         del nameNetwork.node[name]['freq']
         del nameNetwork.node[name]['rank']
