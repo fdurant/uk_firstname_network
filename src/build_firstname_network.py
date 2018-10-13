@@ -160,11 +160,14 @@ def project_network():
     print("done",file=sys.stderr)
 
     partition2nameList = {}
+    partition2freq = {}
     for name,communityID in partition.items():
         if communityID in partition2nameList:
             partition2nameList[communityID].append(name)
+            partition2freq[communityID] += nameNetwork.node[name]['freq']
         else:
             partition2nameList[communityID] = [name]
+            partition2freq[communityID] = nameNetwork.node[name]['freq']
 
 #    print("partition2nameList = ", partition2nameList)
 
@@ -176,7 +179,11 @@ def project_network():
         for name in nameList:
             nameNetwork.node[name]['community'] = partition[name]
             nameNetwork.node[name]['label'] = name
-            nameNetwork.node[name]['color'] = getColor(bigramRanks,charBigramHistogram,name,nameNetwork.node[name]['freq']).get_web()
+            nameNetwork.node[name]['color'] = getColor(bigramRanks,
+                                                       charBigramHistogram,
+                                                       name,
+                                                       nameNetwork.node[name]['freq'],
+                                                       partition2freq[communityID]).get_web()
             del nameNetwork.node[name]['kind']
             del nameNetwork.node[name]['freq']
             del nameNetwork.node[name]['rank']
