@@ -7,6 +7,7 @@ from math import log
 from nltk.util import bigrams
 import community
 from colour import Color
+from name2colour import getColor
 
 def init():
     parser = argparse.ArgumentParser()
@@ -37,6 +38,10 @@ def init():
                         type=str,
                         help='output file with Belgian first names in GraphML format',
                         required=True)
+    parser.add_argument('--outFileCharBigramHistogram', dest='outFileCharBigramHistogram', 
+                        type=str,
+                        help='output file with histogram of character bigrams found in all names',
+                        default='/tmp/histogram.txt')
     global args
     args = vars(parser.parse_args())
     print(args, file=sys.stderr)
@@ -53,8 +58,16 @@ def read_must_haves(filename):
 
 def read_file(filename):
     
+    global bigramCounts
+    bigramCounts = {}
+
+    global totalBigramCount
+    totalBigramCount = 0
+
     global G
     G = nx.Graph()
+
+    nameSeen = {}
 
     with open(filename, 'r') as csvfile:
 
@@ -65,11 +78,23 @@ def read_file(filename):
             freq = int(row['n'])
             rank = int(row['rank'])
 
+            # Give importance to first letter
+            charBigrams = name2charBigramList(name)
+
+            if name in nameSeen:
+                pass
+            else:
+                nameSeen[name] = 1
+                # Build histogram of character bigram counts, counting each first name once
+                for cb in charBigrams:
+                    if cb in bigramCounts:
+                        bigramCounts[cb] += 1
+                    else:
+                        bigramCounts[cb] = 1
+                    totalBigramCount += 1
+                    
             if freq < args['minFreq']:
                 continue
-
-            # Give importance to first letter
-            charBigrams = bigrams('_%s' % name)
 
             if not G.has_node(name):
                 G.add_node(name, kind='firstname', freq=freq, ranks=[rank])
@@ -82,6 +107,10 @@ def read_file(filename):
                     G.add_node(cb, kind='charbigram')
                 if not G.has_edge(name, cb):
                     G.add_edge(name,cb)
+
+    sorted_by_freq = sorted(bigramCounts.items(), key=lambda x:x[1])
+    global bigramRanks
+    bigramRanks = {tuple[0]:rank for (rank,tuple) in enumerate(sorted_by_freq,1)}
 
     for node in list(G):
         if G.node[node]['kind'] == 'firstname':
@@ -130,15 +159,51 @@ def project_network():
     partition = community.best_partition(nameNetwork)
     print("done",file=sys.stderr)
 
+    partition2nameList = {}
+    for name,communityID in partition.items():
+        if communityID in partition2nameList:
+            partition2nameList[communityID].append(name)
+        else:
+            partition2nameList[communityID] = [name]
+
+#    print("partition2nameList = ", partition2nameList)
+
     print("Deleting unneeded attributes ...",file=sys.stderr)
-    for name in partition.keys():
-        nameNetwork.node[name]['community'] = partition[name]
-        nameNetwork.node[name]['label'] = name
-        nameNetwork.node[name]['color'] = Color(pick_for=partition[name]).get_web()
-        del nameNetwork.node[name]['kind']
-        del nameNetwork.node[name]['freq']
-        del nameNetwork.node[name]['rank']
+    for communityID,nameList in partition2nameList.items():
+        charBigramHistogram = {}
+        for name in nameList:
+            charBigramHistogram.update(name2charBigramHistogram(name))
+        for name in nameList:
+            nameNetwork.node[name]['community'] = partition[name]
+            nameNetwork.node[name]['label'] = name
+            nameNetwork.node[name]['color'] = getColor(bigramRanks,charBigramHistogram,name,nameNetwork.node[name]['freq']).get_web()
+            del nameNetwork.node[name]['kind']
+            del nameNetwork.node[name]['freq']
+            del nameNetwork.node[name]['rank']
     print("done",sys.stderr)
+
+def name2charBigramList(name):
+    charBigrams = bigrams('_%s' % name.lower())
+    return charBigrams
+
+def name2charBigramHistogram(name):
+    histogram = {}
+    charBigramList = name2charBigramList(name)
+    for cb in charBigramList:
+        if cb in histogram:
+            histogram[cb] += 1
+        else:
+            histogram[cb] = 1
+    return histogram
+
+def write_bigram_histogram():
+    
+    out_fh = open(args['outFileCharBigramHistogram'], 'w')
+    sorted_by_freq = sorted(bigramCounts.items(), key=lambda x:x[1])
+    for bigram, count in sorted_by_freq:
+        percentage = float(count) / float(totalBigramCount)
+        out_fh.write("%s%s\t%d\t%2.10f\n" % (bigram[0], bigram[1], count, percentage))
+#    out_fh.write("ALL\t%d\t%2.10f\n" % (totalBigramCount, 1))
 
 def write_network():
     print("Writing name network with %d nodes and %d edges ... " % (nx.number_of_nodes(nameNetwork), nx.number_of_edges(nameNetwork)),file=sys.stderr)
@@ -150,4 +215,5 @@ if __name__ == '__main__':
     read_must_haves(args['inFileMustHaveCSV'])
     read_file(args['inFileCSV'])
     project_network()
+    write_bigram_histogram()
     write_network()
